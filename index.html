@@ -1,0 +1,946 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meet Me - Student/Teacher Portal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        .main-content-area {
+            transition: margin-left 0.3s ease-in-out;
+        }
+        .sidebar {
+            transition: transform 0.3s ease-in-out;
+        }
+        .sidebar-item a {
+            transition: background-color 0.2s, transform 0.2s;
+        }
+        .sidebar-item a:hover {
+            transform: translateY(-2px);
+        }
+        .icon {
+            stroke: #84cc16;
+        }
+        .selected-slot {
+            background-color: #bfdbfe;
+        }
+        .table-cell-clickable {
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .table-cell-clickable:hover {
+            background-color: #e5e7eb;
+        }
+
+        /* Responsive styling for small screens */
+        @media (max-width: 1023px) {
+            .sidebar.translate-x-0 {
+                transform: translateX(0);
+            }
+            .sidebar.-translate-x-full {
+                transform: translateX(-100%);
+            }
+            .main-content-area.lg\:ml-64 {
+                margin-left: 0;
+            }
+            .mobile-menu-button {
+                display: block;
+            }
+        }
+        @media (min-width: 1024px) {
+            .sidebar {
+                transform: translateX(0);
+            }
+            .main-content-area {
+                margin-left: 16rem; /* 64px */
+            }
+            .mobile-menu-button {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body class="bg-white font-sans text-gray-800 antialiased min-h-screen flex flex-col">
+    <!-- Main App Container -->
+    <div id="app" class="relative flex flex-col items-center min-h-screen">
+        <!-- Main Application View -->
+        <div id="main-app-container" class="flex-1 w-full md:max-w-5xl"></div>
+
+        <!-- Logout Modal -->
+        <div id="logout-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
+            <div class="bg-white p-6 rounded-xl shadow-2xl max-w-sm w-full mx-4 text-center">
+                <h3 class="text-xl font-bold mb-4">Confirm Logout</h3>
+                <p class="mb-6">Are you sure you want to sign out?</p>
+                <div class="flex justify-center space-x-4">
+                    <button id="logout-yes" class="px-6 py-2 bg-red-500 text-white font-semibold rounded-lg shadow-md hover:bg-red-600 transition-colors">
+                        Yes
+                    </button>
+                    <button id="logout-no" class="px-6 py-2 bg-gray-300 text-gray-800 font-semibold rounded-lg shadow-md hover:bg-gray-400 transition-colors">
+                        No
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // State management
+        let appState = 'landing';
+        let userName = '';
+        let isSidebarOpen = false;
+        let currentPage = 'dashboard';
+        let highlightedSlots = {};
+        const requests = [
+            { id: 1, studentRegNo: '21BCE1234', comment: 'Doubt in MAT2002', status: 'pending' },
+            { id: 2, studentRegNo: '21BCE5678', comment: 'Request to discuss project', status: 'pending' },
+        ];
+        const studentMessages = [
+            { id: 1, teacherName: 'Dr. Jane Doe', message: 'Please see me during my office hours this Friday.' },
+        ];
+        
+        // Mock data for timetable, teachers, and consultants
+        const timetable = {
+            MON: { '08:30': 'A11', '10:05': 'B11', '11:40': 'C11', '13:15': 'A21', '14:50': 'A14', '16:25': 'B21', '18:00': 'C21' },
+            TUE: { '08:30': 'D11', '10:05': 'E11', '11:40': 'F11', '13:15': 'D21', '14:50': 'E14', '16:25': 'E21', '18:00': 'F21' },
+            WED: { '08:30': 'A12', '10:05': 'B12', '11:40': 'C12', '13:15': 'A22', '14:50': 'B14', '16:25': 'B22', '18:00': 'A24' },
+            THU: { '08:30': 'D12', '10:05': 'E12', '11:40': 'F12', '13:15': 'D22', '14:50': 'F14', '16:25': 'E22', '18:00': 'F22' },
+            FRI: { '08:30': 'A13', '10:05': 'B13', '11:40': 'C13', '13:15': 'A23', '14:50': 'C14', '16:25': 'B23', '18:00': 'B24' },
+            SAT: { '08:30': 'D13', '10:05': 'E13', '11:40': 'F13', '13:15': 'D23', '14:50': 'D14', '16:25': 'D24', '18:00': 'E23' },
+        };
+
+        const timeSlots = ['08:30-10:00', '10:05-11:35', '11:40-13:10', '13:10-14:45', '14:50-16:20', '16:25-17:55', '18:00-19:30'];
+        const days = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+
+        const mockTeachers = [
+            { name: 'Dr. Jane Doe', employeeId: 'EMP001', cabinNumber: 'CS-405' },
+            { name: 'Dr. John Smith', employeeId: 'EMP002', cabinNumber: 'CS-406' },
+        ];
+        
+        const consultants = [
+            { name: 'Dr. Anjali Sharma', phone: '+91 91234 56789' },
+            { name: 'Dr. Vikas Kumar', phone: '+91 99887 76655' },
+            { name: 'Dr. Meena Gupta', phone: '+91 90000 11111' },
+        ];
+
+        // Utility functions
+        const getInitials = (name) => {
+            if (!name) return '';
+            const parts = name.split(' ');
+            if (parts.length === 1) {
+                return parts[0].charAt(0).toUpperCase();
+            }
+            return parts.map(part => part.charAt(0)).join('').toUpperCase();
+        };
+
+        const generateCaptcha = () => {
+            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+            let result = '';
+            for (let i = 0; i < 6; i++) {
+                result += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            return result;
+        };
+        
+        // Page rendering functions
+        function renderLandingPage() {
+            return `
+                <div class="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
+                    <div class="flex flex-col items-center mb-10">
+                        <div class="flex items-center justify-center w-24 h-24 mb-4 rounded-full bg-lime-500">
+                            <span class="text-6xl font-bold text-white tracking-widest">M</span>
+                        </div>
+                        <h1 class="text-4xl font-bold text-gray-800 tracking-wide mb-2">Welcome to Meet Me</h1>
+                        <p class="text-lg font-semibold text-gray-500">VIT (Bhopal Campus)</p>
+                    </div>
+                    <div class="flex flex-col sm:flex-row gap-8">
+                        <div id="teacher-icon" class="flex flex-col items-center p-8 bg-white rounded-xl shadow-lg cursor-pointer transition-all duration-300 hover:scale-105 hover:shadow-2xl">
+                            <i data-lucide="school" class="w-20 h-20 text-lime-500 mb-4"></i>
+                            <span class="text-xl font-semibold text-gray-700">Teacher</span>
+                        </div>
+                        <div id="student-icon" class="flex flex-col items-center p-8 bg-white rounded-xl shadow-lg cursor-pointer transition-all duration-300 hover:scale-105 hover:shadow-2xl">
+                            <i data-lucide="graduation-cap" class="w-20 h-20 text-gray-400 mb-4"></i>
+                            <span class="text-xl font-semibold text-gray-700">Student</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderTeacherLoginPage() {
+            return `
+                <div class="flex items-center justify-center min-h-screen bg-gray-100 p-4">
+                    <div class="w-full max-w-md bg-white p-8 rounded-xl shadow-2xl border border-gray-200">
+                        <div class="flex flex-col items-center mb-6">
+                            <div class="flex items-center justify-center w-20 h-20 mb-2 rounded-full bg-lime-500">
+                                <span class="text-5xl font-bold text-white tracking-widest">V</span>
+                            </div>
+                            <h1 class="text-3xl font-bold text-lime-600 mb-1">Teacher Login</h1>
+                            <p class="text-sm font-semibold text-gray-500">VIT (Bhopal Campus)</p>
+                        </div>
+                        <form id="teacher-login-form" class="space-y-6">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Employee ID</label>
+                                <input type="text" id="employee-id" class="w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-lime-500 focus:border-lime-500 transition-all" required>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                                <div class="relative">
+                                    <input type="password" id="teacher-password" class="w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-lime-500 focus:border-lime-500 transition-all pr-10" required>
+                                    <button type="button" id="toggle-teacher-password" class="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-500 hover:text-lime-600 transition-colors">
+                                        <i data-lucide="eye"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="flex items-center justify-between mb-1">
+                                    <label class="block text-sm font-medium text-gray-700">CAPTCHA</label>
+                                    <a href="#" class="text-sm text-lime-600 hover:underline">Forgot Password?</a>
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <div id="teacher-captcha" class="flex-shrink-0 w-32 h-10 bg-gray-200 rounded-lg flex items-center justify-center font-bold text-lg tracking-wider text-gray-800 select-none" style="text-decoration: line-through; letter-spacing: 0.25rem; font-family: monospace;"></div>
+                                    <button type="button" id="refresh-teacher-captcha" class="p-2 rounded-full text-gray-500 hover:bg-gray-200 transition-colors">
+                                        <i data-lucide="refresh-ccw"></i>
+                                    </button>
+                                </div>
+                                <input type="text" id="teacher-user-captcha" placeholder="Enter CAPTCHA" class="mt-2 w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-lime-500 focus:border-lime-500 transition-all" required>
+                            </div>
+                            <button type="submit" class="w-full bg-lime-500 text-white py-2.5 rounded-lg font-semibold text-lg hover:bg-lime-600 transition-colors shadow-lg">Sign In</button>
+                        </form>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderStudentLoginPage() {
+            return `
+                <div class="flex items-center justify-center min-h-screen bg-gray-100 p-4">
+                    <div class="w-full max-w-md bg-white p-8 rounded-xl shadow-2xl border border-gray-200">
+                        <div class="flex flex-col items-center mb-6">
+                            <div class="flex items-center justify-center w-20 h-20 mb-2 rounded-full bg-lime-500">
+                                <span class="text-5xl font-bold text-white tracking-widest">V</span>
+                            </div>
+                            <h1 class="text-3xl font-bold text-lime-600 mb-1">Student Login</h1>
+                            <p class="text-sm font-semibold text-gray-500">VIT (Bhopal Campus)</p>
+                        </div>
+                        <form id="student-login-form" class="space-y-6">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Student Registration ID</label>
+                                <input type="text" id="reg-no" class="w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-lime-500 focus:border-lime-500 transition-all" required>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                                <div class="relative">
+                                    <input type="password" id="student-password" class="w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-lime-500 focus:border-lime-500 transition-all pr-10" required>
+                                    <button type="button" id="toggle-student-password" class="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-500 hover:text-lime-600 transition-colors">
+                                        <i data-lucide="eye"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="flex items-center justify-between mb-1">
+                                    <label class="block text-sm font-medium text-gray-700">CAPTCHA</label>
+                                    <a href="#" class="text-sm text-lime-600 hover:underline">Forgot Password?</a>
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <div id="student-captcha" class="flex-shrink-0 w-32 h-10 bg-gray-200 rounded-lg flex items-center justify-center font-bold text-lg tracking-wider text-gray-800 select-none" style="text-decoration: line-through; letter-spacing: 0.25rem; font-family: monospace;"></div>
+                                    <button type="button" id="refresh-student-captcha" class="p-2 rounded-full text-gray-500 hover:bg-gray-200 transition-colors">
+                                        <i data-lucide="refresh-ccw"></i>
+                                    </button>
+                                </div>
+                                <input type="text" id="student-user-captcha" placeholder="Enter CAPTCHA" class="mt-2 w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-lime-500 focus:border-lime-500 transition-all" required>
+                            </div>
+                            <button type="submit" class="w-full bg-lime-500 text-white py-2.5 rounded-lg font-semibold text-lg hover:bg-lime-600 transition-colors shadow-lg">Sign In</button>
+                        </form>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderTeacherDashboardPage() {
+            return `
+                <div class="flex bg-white font-sans text-gray-800 antialiased min-h-screen">
+                    <!-- Mobile Sidebar Toggle Button -->
+                    <button id="mobile-menu-button" class="mobile-menu-button fixed top-4 left-4 z-50 p-2 text-white bg-lime-500 rounded-full lg:hidden focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-lime-600">
+                        <i data-lucide="menu"></i>
+                    </button>
+
+                    <!-- Sidebar - Left-side menu -->
+                    <aside id="sidebar" class="sidebar fixed inset-y-0 left-0 z-40 w-64 bg-gray-100 transition-transform duration-300 ease-in-out border-r border-gray-200 shadow-lg -translate-x-full lg:translate-x-0">
+                        <div class="flex items-center justify-center p-4 h-16 border-b border-gray-200">
+                            <h2 class="text-2xl font-bold text-lime-600 tracking-wide">Meet Me</h2>
+                        </div>
+                        <nav class="flex-1 p-4">
+                            <ul class="space-y-2">
+                                <li class="sidebar-item">
+                                    <a href="#" id="nav-teacher-info" class="flex items-center p-3 text-sm font-medium text-gray-700 bg-white rounded-lg shadow-md hover:bg-gray-200 transition-colors">
+                                        <i data-lucide="user" class="w-5 h-5 mr-3 text-lime-500"></i>
+                                        Teacher Info
+                                    </a>
+                                </li>
+                                <li class="sidebar-item">
+                                    <a href="#" id="nav-timetable" class="flex items-center p-3 text-sm font-medium text-gray-700 bg-white rounded-lg shadow-md hover:bg-gray-200 transition-colors">
+                                        <i data-lucide="calendar-days" class="w-5 h-5 mr-3 text-lime-500"></i>
+                                        Time Table View
+                                    </a>
+                                </li>
+                                <li class="sidebar-item">
+                                    <a href="#" id="nav-communication" class="flex items-center p-3 text-sm font-medium text-gray-700 bg-white rounded-lg shadow-md hover:bg-gray-200 transition-colors">
+                                        <i data-lucide="messages-square" class="w-5 h-5 mr-3 text-lime-500"></i>
+                                        Communication
+                                    </a>
+                                </li>
+                                <li class="sidebar-item">
+                                    <a href="#" id="nav-request-view" class="flex items-center p-3 text-sm font-medium text-gray-700 bg-white rounded-lg shadow-md hover:bg-gray-200 transition-colors">
+                                        <i data-lucide="clipboard-list" class="w-5 h-5 mr-3 text-lime-500"></i>
+                                        Request View
+                                    </a>
+                                </li>
+                                <li class="sidebar-item">
+                                    <a href="#" id="nav-cts-contact" class="flex items-center p-3 text-sm font-medium text-gray-700 bg-white rounded-lg shadow-md hover:bg-gray-200 transition-colors">
+                                        <i data-lucide="phone" class="w-5 h-5 mr-3 text-lime-500"></i>
+                                        CTS Office Contact
+                                    </a>
+                                </li>
+                            </ul>
+                        </nav>
+                    </aside>
+
+                    <!-- Main content area -->
+                    <div id="main-content-area" class="main-content-area flex-1 flex flex-col transition-all duration-300 ease-in-out lg:ml-64">
+                        <!-- Header - Top bar -->
+                        <header class="flex items-center justify-between h-16 px-6 bg-lime-500 text-white shadow-md">
+                            <div class="flex items-center space-x-4">
+                                <div class="flex items-center space-x-2">
+                                    <img src="https://placehold.co/40x40/ffffff/000000?text=V" alt="VIT Logo" class="h-10 w-10 rounded-full"/>
+                                    <span class="font-semibold text-lg hidden md:block">VIT (Bhopal Campus)</span>
+                                </div>
+                                <a href="#" id="nav-home" class="flex items-center justify-center p-2 rounded-full hover:bg-lime-600 transition-colors">
+                                    <i data-lucide="home"></i>
+                                </a>
+                            </div>
+                            <div class="flex items-center space-x-4">
+                                <div class="flex items-center space-x-2">
+                                    <div class="relative group">
+                                        <div class="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center overflow-hidden border-2 border-white cursor-pointer">
+                                            <span class="text-gray-800 font-bold text-sm" id="teacher-initials"></span>
+                                        </div>
+                                        <div class="absolute right-0 mt-2 w-48 bg-white text-gray-800 rounded-lg shadow-lg hidden group-hover:block">
+                                            <div class="p-3">
+                                                <p class="font-semibold" id="teacher-profile-name"></p>
+                                                <p class="text-sm text-gray-500">Admin</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <button id="signout-button" class="flex items-center p-2 rounded-full hover:bg-lime-600 transition-colors">
+                                    <i data-lucide="log-out"></i>
+                                </button>
+                            </div>
+                        </header>
+                        <main id="main-content" class="flex-1 p-6 lg:p-10"></main>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderStudentDashboardPage() {
+            return `
+                <div class="flex bg-white font-sans text-gray-800 antialiased min-h-screen">
+                    <!-- Mobile Sidebar Toggle Button -->
+                    <button id="mobile-menu-button" class="mobile-menu-button fixed top-4 left-4 z-50 p-2 text-white bg-lime-500 rounded-full lg:hidden focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-lime-600">
+                        <i data-lucide="menu"></i>
+                    </button>
+
+                    <!-- Sidebar - Left-side menu -->
+                    <aside id="sidebar" class="sidebar fixed inset-y-0 left-0 z-40 w-64 bg-gray-100 transition-transform duration-300 ease-in-out border-r border-gray-200 shadow-lg -translate-x-full lg:translate-x-0">
+                        <div class="flex items-center justify-center p-4 h-16 border-b border-gray-200">
+                            <h2 class="text-2xl font-bold text-lime-600 tracking-wide">Meet Me</h2>
+                        </div>
+                        <nav class="flex-1 p-4">
+                            <ul class="space-y-2">
+                                <li class="sidebar-item">
+                                    <a href="#" id="nav-student-info" class="flex items-center p-3 text-sm font-medium text-gray-700 bg-white rounded-lg shadow-md hover:bg-gray-200 transition-colors">
+                                        <i data-lucide="user" class="w-5 h-5 mr-3 text-lime-500"></i>
+                                        Student Info
+                                    </a>
+                                </li>
+                                <li class="sidebar-item">
+                                    <a href="#" id="nav-meet-view" class="flex items-center p-3 text-sm font-medium text-gray-700 bg-white rounded-lg shadow-md hover:bg-gray-200 transition-colors">
+                                        <i data-lucide="messages-square" class="w-5 h-5 mr-3 text-lime-500"></i>
+                                        Meet View
+                                    </a>
+                                </li>
+                                <li class="sidebar-item">
+                                    <a href="#" id="nav-student-comments" class="flex items-center p-3 text-sm font-medium text-gray-700 bg-white rounded-lg shadow-md hover:bg-gray-200 transition-colors">
+                                        <i data-lucide="message-circle" class="w-5 h-5 mr-3 text-lime-500"></i>
+                                        Comments
+                                    </a>
+                                </li>
+                                <li class="sidebar-item">
+                                    <a href="#" id="nav-cts-contact-student" class="flex items-center p-3 text-sm font-medium text-gray-700 bg-white rounded-lg shadow-md hover:bg-gray-200 transition-colors">
+                                        <i data-lucide="phone" class="w-5 h-5 mr-3 text-lime-500"></i>
+                                        CTS Office Info
+                                    </a>
+                                </li>
+                            </ul>
+                        </nav>
+                    </aside>
+
+                    <!-- Main content area -->
+                    <div id="main-content-area" class="main-content-area flex-1 flex flex-col transition-all duration-300 ease-in-out lg:ml-64">
+                        <!-- Header - Top bar -->
+                        <header class="flex items-center justify-between h-16 px-6 bg-lime-500 text-white shadow-md">
+                            <div class="flex items-center space-x-4">
+                                <a href="#" id="student-nav-home" class="flex items-center justify-center p-2 rounded-full hover:bg-lime-600 transition-colors">
+                                    <i data-lucide="home"></i>
+                                </a>
+                            </div>
+                            <div class="flex items-center space-x-4">
+                                <div class="flex items-center space-x-2">
+                                    <div class="relative group">
+                                        <div class="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center overflow-hidden border-2 border-white cursor-pointer">
+                                            <span class="text-gray-800 font-bold text-sm" id="student-initials"></span>
+                                        </div>
+                                        <div class="absolute right-0 mt-2 w-48 bg-white text-gray-800 rounded-lg shadow-lg hidden group-hover:block">
+                                            <p class="p-3 font-semibold" id="student-profile-name"></p>
+                                            <p class="text-sm text-gray-500">Student</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <button id="signout-button-student" class="flex items-center p-2 rounded-full hover:bg-lime-600 transition-colors">
+                                    <i data-lucide="log-out"></i>
+                                </button>
+                            </div>
+                        </header>
+                        <main id="student-main-content" class="flex-1 p-6 lg:p-10"></main>
+                    </div>
+                </div>
+            `;
+        }
+        
+        function renderTeacherInfoPage() {
+            return `
+                <div class="p-6 bg-white rounded-xl shadow-lg border border-gray-200">
+                    <h1 class="text-3xl font-bold text-gray-900 mb-6">Teacher Information</h1>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="flex items-center p-4 bg-gray-50 rounded-lg shadow-sm">
+                            <i data-lucide="user" class="w-6 h-6 text-lime-500 mr-4"></i>
+                            <div>
+                                <p class="text-sm font-medium text-gray-500">Name</p>
+                                <p class="text-lg font-semibold text-gray-900">${userName}</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center p-4 bg-gray-50 rounded-lg shadow-sm">
+                            <i data-lucide="briefcase" class="w-6 h-6 text-lime-500 mr-4"></i>
+                            <div>
+                                <p class="text-sm font-medium text-gray-500">Employee ID</p>
+                                <p class="text-lg font-semibold text-gray-900">EMP12345</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center p-4 bg-gray-50 rounded-lg shadow-sm">
+                            <i data-lucide="building" class="w-6 h-6 text-lime-500 mr-4"></i>
+                            <div>
+                                <p class="text-sm font-medium text-gray-500">School</p>
+                                <p class="text-lg font-semibold text-gray-900">School of Computing Science and Engineering</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center p-4 bg-gray-50 rounded-lg shadow-sm">
+                            <i data-lucide="phone" class="w-6 h-6 text-lime-500 mr-4"></i>
+                            <div>
+                                <p class="text-sm font-medium text-gray-500">Phone Number</p>
+                                <p class="text-lg font-semibold text-gray-900">+91 98765 43210</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center p-4 bg-gray-50 rounded-lg shadow-sm">
+                            <i data-lucide="home" class="w-6 h-6 text-lime-500 mr-4"></i>
+                            <div>
+                                <p class="text-sm font-medium text-gray-500">Cabin Number</p>
+                                <p class="text-lg font-semibold text-gray-900">CS-405</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center p-4 bg-gray-50 rounded-lg shadow-sm">
+                            <i data-lucide="calendar" class="w-6 h-6 text-lime-500 mr-4"></i>
+                            <div>
+                                <p class="text-sm font-medium text-gray-500">Date of Joining</p>
+                                <p class="text-lg font-semibold text-gray-900">2019-08-15</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center p-4 bg-gray-50 rounded-lg shadow-sm">
+                            <i data-lucide="log-out" class="w-6 h-6 text-lime-500 mr-4"></i>
+                            <div>
+                                <p class="text-sm font-medium text-gray-500">Date of Leaving</p>
+                                <p class="text-lg font-semibold text-gray-900">N/A</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        function renderTimeTableViewPage() {
+            const timeSlots = ['08:30-10:00', '10:05-11:35', '11:40-13:10', '13:10-14:45', '14:50-16:20', '16:25-17:55', '18:00-19:30'];
+            const days = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+            
+            const tableHeaders = timeSlots.map(time => `<th class="px-6 py-3 text-center text-xs font-medium uppercase tracking-wider">${time}</th>`).join('');
+            
+            const tableBody = days.map(day => `
+                <tr class="transition-colors">
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 bg-gray-100">${day}</td>
+                    ${timeSlots.map((time, index) => {
+                        const slotKey = `${day}-${index}`;
+                        const isLunch = day === 'MON' && index === 3; // Lunch slot logic
+                        const isHighlighted = highlightedSlots[slotKey];
+                        const cellClass = isHighlighted ? 'bg-blue-200' : (isLunch ? 'bg-gray-400' : 'bg-white hover:bg-gray-200');
+                        const slotValue = timetable[day] ? timetable[day][time.split('-')[0]] || '' : '';
+                        const content = isLunch ? `<span class="font-semibold text-gray-500 italic">Lunch</span>` : slotValue;
+                        return `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700 cursor-pointer text-center table-cell-clickable ${cellClass}" data-day="${day}" data-time-index="${index}">${content}</td>`;
+                    }).join('')}
+                </tr>
+            `).join('');
+
+            return `
+                <div class="p-6 bg-white rounded-xl shadow-lg border border-gray-200">
+                    <h1 class="text-3xl font-bold text-gray-900 mb-6">Time Table View</h1>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200 rounded-lg overflow-hidden">
+                            <thead class="bg-lime-500 text-white">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">Day / Time</th>
+                                    ${tableHeaders}
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                ${tableBody}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="mt-6 flex flex-wrap gap-4 items-center">
+                        <div class="flex items-center">
+                            <span class="w-4 h-4 bg-blue-200 rounded-full mr-2"></span>
+                            <span class="text-sm text-gray-600">Selected Slot</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderCommunicationPage() {
+            return `
+                <div class="p-6 bg-white rounded-xl shadow-lg border border-gray-200">
+                    <h1 class="text-3xl font-bold text-gray-900 mb-6">Communication</h1>
+                    <form id="communication-form" class="space-y-4">
+                        <div>
+                            <label for="regNo" class="block text-sm font-medium text-gray-700 mb-1">
+                                Student Registration Number
+                            </label>
+                            <input type="text" id="regNo" class="w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-lime-500 focus:border-lime-500 transition-all" required>
+                        </div>
+                        <div>
+                            <label for="comment" class="block text-sm font-medium text-gray-700 mb-1">
+                                Comment
+                            </label>
+                            <textarea id="comment" rows="4" class="w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-lime-500 focus:border-lime-500 transition-all" required></textarea>
+                        </div>
+                        <button type="submit" class="px-6 py-2 bg-lime-500 text-white font-semibold rounded-lg shadow-md hover:bg-lime-600 transition-colors">
+                            Send
+                        </button>
+                    </form>
+                </div>
+            `;
+        }
+
+        function renderRequestViewPage() {
+            const requestCards = requests.length === 0 ? `
+                <div class="text-center p-8 border-2 border-dashed border-gray-300 rounded-lg text-gray-500">
+                    <p>Seems like you don't have any pending requests.</p>
+                </div>
+            ` : `
+                <div class="space-y-4">
+                    ${requests.map(request => `
+                        <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg shadow-sm">
+                            <div>
+                                <p class="font-semibold text-gray-800">Student: ${request.studentRegNo}</p>
+                                <p class="text-sm text-gray-600 mt-1">Comment: ${request.comment}</p>
+                            </div>
+                            <div class="flex space-x-2">
+                                <button class="p-2 rounded-full text-white bg-green-500 hover:bg-green-600 transition-colors" onclick="handleRequestAction(${request.id}, 'accepted')" aria-label="Accept request">
+                                    <i data-lucide="check"></i>
+                                </button>
+                                <button class="p-2 rounded-full text-white bg-red-500 hover:bg-red-600 transition-colors" onclick="handleRequestAction(${request.id}, 'rejected')" aria-label="Reject request">
+                                    <i data-lucide="ban"></i>
+                                </button>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+            return `
+                <div class="p-6 bg-white rounded-xl shadow-lg border border-gray-200">
+                    <h1 class="text-3xl font-bold text-gray-900 mb-6">Pending Requests</h1>
+                    ${requestCards}
+                </div>
+            `;
+        }
+
+        function renderCTSContactPage() {
+            const options = consultants.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
+            return `
+                <div class="p-6 bg-white rounded-xl shadow-lg border border-gray-200">
+                    <h1 class="text-3xl font-bold text-gray-900 mb-6">CTS Office Contact</h1>
+                    <div class="space-y-4 max-w-sm">
+                        <div>
+                            <label for="consultant-select" class="block text-sm font-medium text-gray-700 mb-1">
+                                Consultant Name
+                            </label>
+                            <select id="consultant-select" class="w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-lime-500 focus:border-lime-500 transition-all">
+                                <option value="">-- Select a Consultant --</option>
+                                ${options}
+                            </select>
+                        </div>
+                        <div>
+                            <p class="text-sm font-medium text-gray-700">Contact Information</p>
+                            <p id="contact-info" class="mt-1 p-4 bg-gray-50 border border-gray-200 rounded-lg text-gray-800">
+                                Please select a consultant to view contact information.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderStudentInfoPage() {
+            const studentData = {
+                name: userName,
+                regNo: '21BCE1234',
+                school: 'School of Computing Science and Engineering',
+                year: '3rd Year',
+                joiningDate: '2021-08-15',
+                graduationDate: '2025-05-30',
+            };
+            return `
+                <div class="p-6 bg-white rounded-xl shadow-lg border border-gray-200">
+                    <h1 class="text-3xl font-bold text-gray-900 mb-6">Student Information</h1>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="flex items-center p-4 bg-gray-50 rounded-lg shadow-sm">
+                            <i data-lucide="user" class="w-6 h-6 text-lime-500 mr-4"></i>
+                            <div>
+                                <p class="text-sm font-medium text-gray-500">Name</p>
+                                <p class="text-lg font-semibold text-gray-900">${studentData.name}</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center p-4 bg-gray-50 rounded-lg shadow-sm">
+                            <i data-lucide="briefcase" class="w-6 h-6 text-lime-500 mr-4"></i>
+                            <div>
+                                <p class="text-sm font-medium text-gray-500">Registration Number</p>
+                                <p class="text-lg font-semibold text-gray-900">${studentData.regNo}</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center p-4 bg-gray-50 rounded-lg shadow-sm">
+                            <i data-lucide="building" class="w-6 h-6 text-lime-500 mr-4"></i>
+                            <div>
+                                <p class="text-sm font-medium text-gray-500">School</p>
+                                <p class="text-lg font-semibold text-gray-900">${studentData.school}</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center p-4 bg-gray-50 rounded-lg shadow-sm">
+                            <i data-lucide="graduation-cap" class="w-6 h-6 text-lime-500 mr-4"></i>
+                            <div>
+                                <p class="text-sm font-medium text-gray-500">Study Year</p>
+                                <p class="text-lg font-semibold text-gray-900">${studentData.year}</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center p-4 bg-gray-50 rounded-lg shadow-sm">
+                            <i data-lucide="calendar" class="w-6 h-6 text-lime-500 mr-4"></i>
+                            <div>
+                                <p class="text-sm font-medium text-gray-500">Date of Joining</p>
+                                <p class="text-lg font-semibold text-gray-900">${studentData.joiningDate}</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center p-4 bg-gray-50 rounded-lg shadow-sm">
+                            <i data-lucide="calendar" class="w-6 h-6 text-lime-500 mr-4"></i>
+                            <div>
+                                <p class="text-sm font-medium text-gray-500">Graduation Date</p>
+                                <p class="text-lg font-semibold text-gray-900">${studentData.graduationDate}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderMeetViewPage() {
+            const teachersList = mockTeachers.map(t => `<option value="${t.name}">${t.name}</option>`).join('');
+            return `
+                <div class="p-6 bg-white rounded-xl shadow-lg border border-gray-200">
+                    <h1 class="text-3xl font-bold text-gray-900 mb-6">Meet a Teacher</h1>
+                    
+                    <form id="teacher-search-form" class="flex mb-6 space-x-2">
+                        <select id="teacher-search-select" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-lime-500 focus:border-lime-500 transition-all">
+                            <option value="">-- Select a Teacher --</option>
+                            ${teachersList}
+                        </select>
+                        <button type="submit" class="p-2 bg-lime-500 text-white rounded-lg shadow-md hover:bg-lime-600 transition-colors">
+                            <i data-lucide="search"></i>
+                        </button>
+                    </form>
+                    
+                    <div id="teacher-info-display" class="hidden p-4 bg-gray-50 rounded-lg shadow-sm space-y-4">
+                        <h3 class="text-lg font-semibold text-gray-800">Teacher Found: <span id="found-teacher-name"></span></h3>
+                        <p class="text-sm text-gray-600">Employee ID: <span id="found-teacher-id"></span></p>
+                        <p class="text-sm text-gray-600">Cabin Number: <span id="found-teacher-cabin"></span></p>
+                        
+                        <form id="meeting-request-form" class="mt-4 space-y-4">
+                            <div>
+                                <label for="request-comment" class="block text-sm font-medium text-gray-700 mb-1">
+                                    Request a meeting
+                                </label>
+                                <textarea id="request-comment-student" rows="3" class="w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-lime-500 focus:border-lime-500 transition-all" placeholder="Enter your reason for the meeting..." required></textarea>
+                            </div>
+                            <button type="submit" class="w-full px-6 py-2 bg-lime-500 text-white font-semibold rounded-lg shadow-md hover:bg-lime-600 transition-colors">
+                                Send Meeting Request
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            `;
+        }
+        
+        function renderStudentCommentsPage() {
+            const messagesHtml = studentMessages.length === 0 ? `
+                <div class="text-center p-8 border-2 border-dashed border-gray-300 rounded-lg text-gray-500">
+                    <p>Seems like you have got no new messages.</p>
+                </div>
+            ` : `
+                <div class="space-y-4">
+                    ${studentMessages.map(msg => `
+                        <div class="p-4 bg-gray-50 rounded-lg shadow-sm">
+                            <p class="font-semibold text-gray-800">From: ${msg.teacherName}</p>
+                            <p class="text-sm text-gray-600 mt-1">${msg.message}</p>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+            return `
+                <div class="p-6 bg-white rounded-xl shadow-lg border border-gray-200">
+                    <h1 class="text-3xl font-bold text-gray-900 mb-6">Your Comments</h1>
+                    ${messagesHtml}
+                </div>
+            `;
+        }
+
+        function renderStudentCTSContactPage() {
+            const options = consultants.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
+            return `
+                <div class="p-6 bg-white rounded-xl shadow-lg border border-gray-200">
+                    <h1 class="text-3xl font-bold text-gray-900 mb-6">CTS Office Contact</h1>
+                    <div class="space-y-4 max-w-sm">
+                        <div>
+                            <label for="consultant-select-student" class="block text-sm font-medium text-gray-700 mb-1">
+                                Consultant Name
+                            </label>
+                            <select id="consultant-select-student" class="w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-lime-500 focus:border-lime-500 transition-all">
+                                <option value="">-- Select a Consultant --</option>
+                                ${options}
+                            </select>
+                        </div>
+                        <div>
+                            <p class="text-sm font-medium text-gray-700">Contact Information</p>
+                            <p id="contact-info-student" class="mt-1 p-4 bg-gray-50 border border-gray-200 rounded-lg text-gray-800">
+                                Please select a consultant to view contact information.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Main rendering logic
+        function renderApp() {
+            const appContainer = document.getElementById('main-app-container');
+            if (appState === 'landing') {
+                appContainer.innerHTML = renderLandingPage();
+                document.getElementById('teacher-icon').addEventListener('click', () => { appState = 'teacherLogin'; renderApp(); });
+                document.getElementById('student-icon').addEventListener('click', () => { appState = 'studentLogin'; renderApp(); });
+            } else if (appState === 'teacherLogin') {
+                appContainer.innerHTML = renderTeacherLoginPage();
+                initializeLoginPage('teacher');
+            } else if (appState === 'studentLogin') {
+                appContainer.innerHTML = renderStudentLoginPage();
+                initializeLoginPage('student');
+            } else if (appState === 'teacherDashboard') {
+                appContainer.innerHTML = renderTeacherDashboardPage();
+                initializeDashboard('teacher');
+            } else if (appState === 'studentDashboard') {
+                appContainer.innerHTML = renderStudentDashboardPage();
+                initializeDashboard('student');
+            }
+            lucide.createIcons(); // Initialize Lucide icons
+        }
+
+        function initializeLoginPage(userType) {
+            const form = document.getElementById(`${userType}-login-form`);
+            const captchaDiv = document.getElementById(`${userType}-captcha`);
+            const refreshButton = document.getElementById(`refresh-${userType}-captcha`);
+            const passwordInput = document.getElementById(`${userType}-password`);
+            const togglePasswordButton = document.getElementById(`toggle-${userType}-password`);
+            const userCaptchaInput = document.getElementById(`${userType}-user-captcha`);
+            let captcha = generateCaptcha();
+            captchaDiv.textContent = captcha;
+
+            refreshButton.addEventListener('click', () => {
+                captcha = generateCaptcha();
+                captchaDiv.textContent = captcha;
+            });
+
+            togglePasswordButton.addEventListener('click', () => {
+                const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
+                passwordInput.setAttribute('type', type);
+                togglePasswordButton.innerHTML = `<i data-lucide="${type === 'password' ? 'eye' : 'eye-off'}"></i>`;
+                lucide.createIcons();
+            });
+
+            form.addEventListener('submit', (e) => {
+                e.preventDefault();
+                if (userCaptchaInput.value === captcha) {
+                    userName = userType === 'teacher' ? 'Dr. Jane Doe' : 'Student Name';
+                    appState = userType === 'teacher' ? 'teacherDashboard' : 'studentDashboard';
+                    currentPage = userType === 'teacher' ? 'teacherDashboard' : 'studentDashboardPage';
+                    renderApp();
+                } else {
+                    alert('Incorrect CAPTCHA. Please try again.');
+                    captcha = generateCaptcha();
+                    captchaDiv.textContent = captcha;
+                    userCaptchaInput.value = '';
+                }
+            });
+        }
+        
+        function initializeDashboard(userType) {
+            const sidebar = document.getElementById('sidebar');
+            const mainContentArea = document.getElementById('main-content-area');
+            const mobileMenuButton = document.getElementById('mobile-menu-button');
+            const logoutModal = document.getElementById('logout-modal');
+            
+            // Set user initials and name
+            const initialsElement = document.getElementById(`${userType}-initials`);
+            if (initialsElement) initialsElement.textContent = getInitials(userName);
+            const profileNameElement = document.getElementById(`${userType}-profile-name`);
+            if (profileNameElement) profileNameElement.textContent = userName;
+
+            // Mobile sidebar toggle
+            mobileMenuButton.addEventListener('click', () => {
+                isSidebarOpen = !isSidebarOpen;
+                sidebar.classList.toggle('-translate-x-full', !isSidebarOpen);
+                sidebar.classList.toggle('translate-x-0', isSidebarOpen);
+            });
+
+            // Handle click outside sidebar
+            document.addEventListener('mousedown', (event) => {
+                if (isSidebarOpen && !sidebar.contains(event.target) && !mobileMenuButton.contains(event.target)) {
+                    isSidebarOpen = false;
+                    sidebar.classList.add('-translate-x-full');
+                    sidebar.classList.remove('translate-x-0');
+                }
+            });
+
+            // Logout modal functionality
+            const signoutButton = document.getElementById(`signout-button${userType === 'student' ? '-student' : ''}`);
+            signoutButton.addEventListener('click', () => {
+                logoutModal.classList.remove('hidden');
+            });
+            document.getElementById('logout-yes').addEventListener('click', () => {
+                appState = 'landing';
+                renderApp();
+            });
+            document.getElementById('logout-no').addEventListener('click', () => {
+                logoutModal.classList.add('hidden');
+            });
+            
+            // Render initial page content
+            renderPageContent(userType);
+            
+            // Handle navigation
+            const navLinks = sidebar.querySelectorAll('a');
+            navLinks.forEach(link => {
+                link.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const page = e.currentTarget.id.replace('nav-', '').replace('-student', '');
+                    currentPage = page;
+                    renderPageContent(userType);
+                    isSidebarOpen = false;
+                    sidebar.classList.add('-translate-x-full');
+                    sidebar.classList.remove('translate-x-0');
+                });
+            });
+        }
+        
+        function renderPageContent(userType) {
+            const mainContent = document.getElementById(`${userType === 'student' ? 'student-main-content' : 'main-content'}`);
+            
+            let content = '';
+            switch (currentPage) {
+                case 'teacherDashboard':
+                case 'studentDashboardPage':
+                case 'studentDashboard':
+                    content = renderDashboardContent(userType);
+                    break;
+                case 'teacherInfo':
+                    content = renderTeacherInfoPage();
+                    break;
+                case 'timetable':
+                    content = renderTimeTableViewPage();
+                    break;
+                case 'communication':
+                    content = renderCommunicationPage();
+                    break;
+                case 'requestView':
+                    content = renderRequestViewPage();
+                    break;
+                case 'ctsContact':
+                    content = renderCTSContactPage();
+                    break;
+                case 'studentInfo':
+                    content = renderStudentInfoPage();
+                    break;
+                case 'meetView':
+                    content = renderMeetViewPage();
+                    break;
+                case 'studentComments':
+                    content = renderStudentCommentsPage();
+                    break;
+            }
+            mainContent.innerHTML = content;
+            lucide.createIcons();
+        }
+        
+        function renderDashboardContent(userType) {
+             if (userType === 'student') {
+                return `
+                    <div class="p-6 bg-white rounded-xl shadow-lg border border-gray-200">
+                        <h1 class="text-3xl font-bold text-gray-900 mb-2">Welcome, ${userName}!</h1>
+                        <p class="text-sm font-medium text-gray-500 mb-6">VIT (Bhopal Campus)</p>
+                    </div>
+                `;
+            } else {
+                return `
+                    <div class="p-6 bg-white rounded-xl shadow-lg border border-gray-200">
+                        <h1 class="text-3xl font-bold text-gray-900 mb-2">Welcome, ${userName}!</h1>
+                        <p class="text-sm font-medium text-gray-500 mb-6">VIT (Bhopal Campus)</p>
+                        <!-- Other Teacher Dashboard content here -->
+                    </div>
+                `;
+            }
+        }
+        
+        // Initial render
+        document.addEventListener('DOMContentLoaded', () => {
+            renderApp();
+        });
+    </script>
+</body>
+</html>
